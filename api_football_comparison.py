@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-The purpose of this code is to analyse Martin Ødegaard's performance over the 19/20 season at Real Sociedad 
-
+Code to make comparisons between 2 players using radar chart plots
 """
 import requests
 import os
@@ -11,14 +10,34 @@ import plotly.graph_objects as go
 import plotly.offline as pyo
 from scipy import stats
 
+'''
+Get data from players to compare.
+'''
+def get_players_data(players,season,league_id):
+    players_league = []
+    for player in players:
+        url = 'https://api-football-v1.p.rapidapi.com/v2/players/player/{}/{}'.format(player,season)
+        response = requests.request('GET', url, headers=headers)
+        player_dict = json.loads(response.text)['api']['players'] 
+        player_laliga = list(filter(lambda x: x['league_id'] == league_id, player_dict))[0]
+        players_league.append(player_laliga)
+    return players_league
 
+'''
+Calculate stats per 90 minutes.
+'''
 def get_90min_stats(player,stat1,stat2):
     return round(player[stat1][stat2] * 90 / player['games']['minutes_played'],2)
 
+'''
+Calculate percentile.
+'''
 def get_score(ref_list,stat):
     return round(stats.percentileofscore(ref_list, stat),0)
 
-
+'''
+Create a list of players from the chosen competition.
+'''
 def get_league_stats(league_id):
     url = 'https://api-football-v1.p.rapidapi.com/v2/teams/league/{}'.format(league_id)
     response = requests.request('GET', url, headers=headers)
@@ -26,17 +45,19 @@ def get_league_stats(league_id):
     team_ids = [d['team_id'] for d in teams_dict]
     players_in_league = []
     for team_id in team_ids:
-        player_data_list = get_teams_stats(team_id)
+        player_data_list = get_teams_stats(team_id,league_id)
         players_in_league += player_data_list        
     players_df = pd.DataFrame(players_in_league)
     return  players_df
 
-
-def get_teams_stats(team_id):
+'''
+Create a list of players from the chosen team.
+'''
+def get_teams_stats(team_id,league_id):
     url = 'https://api-football-v1.p.rapidapi.com/v2/players/team/{}/2020-2021'.format(team_id)
     response = requests.request('GET', url, headers=headers)
     team_dict = json.loads(response.text)['api']['players']
-    laliga_stats = list(filter(lambda x: x['league_id'] == 2833 and x['games']['appearences'] > 5, team_dict))
+    laliga_stats = list(filter(lambda x: x['league_id'] == league_id and x['games']['appearences'] > 5, team_dict)) #Filter players with more than 5 appearences in the league
     player_data_list = []
     for player in laliga_stats:
         data = {'player_id': player['player_id'],
@@ -65,10 +86,8 @@ def get_teams_stats(team_id):
 This function get data of the player using FOOTBALL-API
 and create the graphic.
 '''
-def create_graphic(players_league,team1_img_source,player1_img_source,team2_img_source,player2_img_source):
+def create_graphic(players_league,players_df, team1_img_source,player1_img_source,team2_img_source,player2_img_source):
     
-    players_df = pd.read_csv('data\players20_21.txt', sep=";", header=0)
-    #players_df = get_league_stats('2833')
     df_flags = pd.read_csv('data\countries_flags_url.csv')
     player_data_list = []
     for player in players_league:
@@ -181,7 +200,13 @@ def create_graphic(players_league,team1_img_source,player1_img_source,team2_img_
                 y=y-0.45,
                 text= str(round(float(player['rating']),1)),
                 showarrow=False,
-                font=dict(size=50)
+                font=dict(size=50),
+                bordercolor="White",
+                borderwidth=2,
+                borderpad=4,
+                bgcolor=colors[int((round(float(player['rating']),1)))],
+                opacity=0.8
+                
             )
         ]          
 
@@ -320,32 +345,30 @@ def create_graphic(players_league,team1_img_source,player1_img_source,team2_img_
         layer="below"
     )     
     
+
     '''
-    Add rating square
+    Add legend
     '''      
-    fig.add_shape(type="rect",
-        x0=0.02, y0=0.25, x1=0.095, y1=0.37,
-        line=dict(
-            width=2,
-        ),
-        fillcolor=colors[int((round(float(players_league[0]['rating']),1)))],
-    )
+    fig.add_annotation(x=1, y=-0.1,
+                text="The values correspond to the percentile in which the player is in each statistic<br>evaluated per 90 minutes in relation to the rest of the players in La Liga last season.",
+                showarrow=False)
     
-    fig.add_shape(type="rect",
-        x0=0.915, y0=0.25, x1=0.99, y1=0.37,
-        line=dict(
-            width=2,
-        ),
-        fillcolor=colors[int((round(float(players_league[1]['rating']),1)))],
-    )    
+    fig.add_layout_image(
+        dict(
+            source="https://cdn.pixabay.com/photo/2017/03/17/05/20/info-2150938_960_720.png", #Info icon
+            x=0.67, y=-0.07,
+            sizex=0.03, sizey=0.03,
+            xanchor="left", yanchor="bottom"
+        )
+    )  
     
-    
+
     fig.update_layout(
     font_family='"Overpass", sans-serif',
     )
 
     pyo.plot(fig)
-    
+
 
 # Write here your API key
 #os.environ['x_rapidapi_key'] = 'YourAPIKey' #Uncomment this line and write here your API key or set it in your env 
@@ -381,25 +404,29 @@ url = 'https://api-football-v1.p.rapidapi.com/v2/players/squad/541/2021-2022'
 #id M. Depay = 667
 #id K. Benzema = 759
 
-# M. Depay stats
-url = 'https://api-football-v1.p.rapidapi.com/v2/players/player/667/2021-2022'
-response = requests.request('GET', url, headers=headers)
-player1_dict = json.loads(response.text)['api']['players'] 
 
-# K. Benzema stats
-url = 'https://api-football-v1.p.rapidapi.com/v2/players/player/759/2021-2022'
-response = requests.request('GET', url, headers=headers)
-player2_dict = json.loads(response.text)['api']['players'] 
+'''
+If you don't have access to FOOTBALL-API, you can read data from this code in data folder.
+'''
+with open('data\players_league.json') as f:
+    players_league = json.load(f)
 
-player1_laliga = list(filter(lambda x: x['league_id'] == 3513, player1_dict))[0]
-player2_laliga = list(filter(lambda x: x['league_id'] == 3513, player2_dict))[0]
-players_league = [player1_laliga,player2_laliga]
+players_df = pd.read_csv('data\players20_21.txt', sep=";", header=0)
 
+
+'''
+If you do, then uncomment the following lines.
+'''
+#players_league = get_players_data(players=['667','759'],season='2021-2022',league_id=3513)
+#players_df = get_league_stats('2833')
+
+
+'''
+Paste images url, preferably images of teams from Transfermarkt and players images from FifaRosters
+'''   
 team1_img_source = "https://tmssl.akamaized.net/images/wappen/head/131.png"
 player1_img_source = "https://www.fifarosters.com/assets/players/fifa22/faces/202556.png" 
 team2_img_source = "https://tmssl.akamaized.net/images/wappen/head/418.png"
 player2_img_source = "https://www.fifarosters.com/assets/players/fifa22/faces/165153.png" 
 
-data = create_graphic(players_league,team1_img_source,player1_img_source,team2_img_source,player2_img_source)
-    
-
+create_graphic(players_league,players_df, team1_img_source,player1_img_source,team2_img_source,player2_img_source)
