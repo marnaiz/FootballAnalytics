@@ -1,2 +1,2 @@
 # Football Analytics
-Repository for Football Analytics projects.
+Football Analytics projects repository
