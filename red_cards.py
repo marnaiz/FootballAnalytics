@@ -44,9 +44,9 @@ def get_matches_red(league_prefix, league, season):
         regex = re.compile('card-ico icon--redCard.*')
         red_card = soup.find_all('svg', attrs={'class':regex})
         match_id = match.text.split('\n')
-        df_match['season'] = season
         df_match['homeTeam'] = [re.sub(' de ', ' ', unidecode.unidecode(match_id[1]))]
         df_match['awayTeam'] = [re.sub(' de ', ' ', unidecode.unidecode(match_id[2]))]
+        df_match['season'] = season
         if red_card:
             df_match['red_card'] = True
         else:
@@ -101,7 +101,10 @@ def get_players_api(league, teams, season):
             df_players['minutes'] = df_players['games'].apply(lambda x: x.get('minutes_played'))
             df_players['n_goals'] = df_players['goals'].apply(lambda x: x.get('total'))
             df_players['n_assists'] = df_players['goals'].apply(lambda x: x.get('assists')) 
-            player_short = df_players[['player_id', 'player_name', 'position', 'minutes', 'n_goals', 'n_assists']]
+            df_players['n_keypasses'] = df_players['passes'].apply(lambda x: x.get('key')) 
+            df_players['n_dribbles'] = df_players['dribbles'].apply(lambda x: x.get('success')) 
+            df_players['n_fouls'] = df_players['fouls'].apply(lambda x: x.get('committed'))
+            player_short = df_players[['player_id', 'player_name', 'position', 'minutes', 'n_goals', 'n_assists', 'n_keypasses', 'n_dribbles', 'n_fouls']]
             player_short_grouped = player_short.groupby(['player_id', 'player_name','position'], as_index=False).sum()
             ratio_dict = {'Goalkeeper': 0,
                           'Defender': 25,
@@ -110,7 +113,10 @@ def get_players_api(league, teams, season):
             player_short_grouped['position_ratio'] = player_short_grouped['position'].map(ratio_dict)       
             player_short_grouped['goals90min'] = round(player_short_grouped['n_goals'] * 90 / player_short_grouped['minutes'],2)
             player_short_grouped['assists90min'] = round(player_short_grouped['n_assists'] * 90 / player_short_grouped['minutes'],2)  
-            player_short_grouped['ofensive_ratio'] = round(player_short_grouped['position_ratio'] + 5*player_short_grouped['goals90min']+ 2*player_short_grouped['assists90min'],2) 
+            player_short_grouped['keypasses90min'] = round(player_short_grouped['n_keypasses'] * 90 / player_short_grouped['minutes'],2)  
+            player_short_grouped['dribbles90min'] = round(player_short_grouped['n_dribbles'] * 90 / player_short_grouped['minutes'],2)  
+            player_short_grouped['fouls90min'] = round(player_short_grouped['n_fouls'] * 90 / player_short_grouped['minutes'],2)  
+            player_short_grouped['ofensive_ratio'] = round(player_short_grouped['position_ratio'] + 10*player_short_grouped['goals90min']+ 5*player_short_grouped['assists90min'] + 3*player_short_grouped['keypasses90min'] + 3*player_short_grouped['dribbles90min'] - 5*player_short_grouped['fouls90min'],2) 
             df_players_total = df_players_total.append(player_short_grouped) 
         df_players_total = df_players_total[['player_id', 'player_name','position', 'ofensive_ratio']].groupby(['player_id', 'player_name', 'position'], as_index=False).mean()
             
@@ -148,6 +154,7 @@ def get_events_api(league, red_list, season):
                         d.append(
                             {
                                 'minute': minute,
+                                'team_id': team_id,
                                 'red_card': int(player_id),
                                 'player_out': int(substitution['player_id'].iloc[0]) if len(substitution)!=0 else 0,
                                 'player_in': int(substitution['assist_id'].iloc[0]) if len(substitution)!=0 else 0,
@@ -162,6 +169,7 @@ def get_events_api(league, red_list, season):
                         d.append(
                             {
                                 'minute': minute,
+                                'team_id': team_id,
                                 'red_card': int(player_id),
                                 'player_out': int(substitution['player_id'].iloc[0]) if len(substitution)!=0 else 0,
                                 'player_in': int(substitution['assist_id'].iloc[0]) if len(substitution)!=0 else 0,
@@ -175,7 +183,7 @@ def get_events_api(league, red_list, season):
             df_final = pd.DataFrame(d)
             df_final['goals_diff_brc'] = df_final['goals_for_brc'] - df_final['goals_against_brc']
             df_final['goals_diff_arc'] = df_final['goals_for_arc'] - df_final['goals_against_arc']
-            df_final['goals_diff'] = df_final['goals_diff_arc'] - df_final['goals_diff_brc']
+            df_final['goals_diff'] = df_final['goals_diff_arc'] + df_final['goals_diff_brc']
             df_events_final = df_events_final.append(df_final) 
     
         return df_events_final    
@@ -200,6 +208,10 @@ def get_df_final(league_prefix, league):
     df_events_final = get_events_api(league, red_list, season)
         
     df_total = df_events_final.copy()
+    df_total['country'] = country
+    df_total['league'] = league['name']
+    df_total['season'] = season
+    df_total['team_name'] = df_total['team_id'].map(df_teams.set_index('team_id')['name'])
     df_total['red_card_position'] = df_total['red_card'].map(df_players.set_index('player_id')['position'])
     df_total['red_card'] = df_total['red_card'].map(df_players.set_index('player_id')['ofensive_ratio'])
     df_total['player_out'] = df_total['player_out'].map(df_players.set_index('player_id')['ofensive_ratio'])
