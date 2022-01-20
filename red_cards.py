@@ -181,9 +181,9 @@ def get_events_api(league, red_list, season):
                         )  
                     
             df_final = pd.DataFrame(d)
-            df_final['goals_diff_brc'] = df_final['goals_for_brc'] - df_final['goals_against_brc']
-            df_final['goals_diff_arc'] = df_final['goals_for_arc'] - df_final['goals_against_arc']
-            df_final['goals_diff'] = df_final['goals_diff_arc'] + df_final['goals_diff_brc']
+            df_final['goal_diff_brc'] = df_final['goals_for_brc'] - df_final['goals_against_brc']
+            df_final['goal_diff_arc'] = df_final['goals_for_arc'] - df_final['goals_against_arc']
+            df_final['goal_diff'] = df_final['goal_diff_arc'] + df_final['goal_diff_brc']
             df_events_final = df_events_final.append(df_final) 
     
         return df_events_final    
